@@ -1,0 +1,8 @@
+[cite_start]customtkinter [cite: 1]
+[cite_start]ofxparse [cite: 1]
+[cite_start]pandas [cite: 1]
+pdfplumber
+[cite_start]PyMuPDF [cite: 1]
+[cite_start]Pillow [cite: 1]
+[cite_start]reportlab [cite: 1]
+requests
