@@ -1,5 +1,3 @@
-# main.py
-
 from datetime import datetime
 import customtkinter
 from tkinter import filedialog
@@ -7,22 +5,22 @@ from converter import Converter
 import os
 import io
 from PIL import Image, ImageTk
-import fitz  # PyMuPDF, já está nos seus requirements
-import threading # <<< NOVO >>> para atualização em segundo plano
-import requests  # <<< NOVO >>> para checar a versão
-import webbrowser # <<< NOVO >>> para abrir o link de download
-import json # <<< NOVO >>> para analisar a resposta da versão
+import fitz  # PyMuPDF
+import threading
+import requests
+import webbrowser
+import json
 
-# --- <<< NOVO: Configurações de Atualização >>> ---
-VERSAO_ATUAL = "1.0.0" 
-# URL do arquivo "raw" do seu Gist ou outro local
-URL_VERSAO = "https://gist.githubusercontent.com/SEU_USUARIO/SEU_ID_DO_GIST/raw/version.json" 
+# --- Configurações de Atualização ---
+VERSAO_ATUAL = "1.5.1" 
+# SUBSTITUA PELA URL REAL DO SEU GIST "RAW"
+URL_VERSAO = "https://gist.githubusercontent.com/MuriloAEFV/e8f38e34d14ec3224c4706c84ea60ac8/raw/291fb05b21be15a5b297c9abff2fd4d3b8f16b17/gistfile1.txt"
 
 customtkinter.set_appearance_mode("System")
 customtkinter.set_default_color_theme("blue")
 
 
-# --- <<< NOVO: Janela de Visualização >>> ---
+# --- Janela de Visualização ---
 class PreviewWindow(customtkinter.CTkToplevel):
     def __init__(self, parent, data, file_format):
         super().__init__(parent)
@@ -32,12 +30,11 @@ class PreviewWindow(customtkinter.CTkToplevel):
         
         self.title(f"Visualização - {file_format.upper()}")
         self.geometry("800x600")
-        self.grab_set() # Mantém o foco nesta janela
+        self.grab_set()
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Frame para os botões
         self.button_frame = customtkinter.CTkFrame(self)
         self.button_frame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
 
@@ -51,31 +48,45 @@ class PreviewWindow(customtkinter.CTkToplevel):
 
     def display_content(self):
         if self.file_format in ['csv', 'xml', 'ofx']:
-            textbox = customtkinter.CTkTextbox(self)
-            textbox.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-            textbox.insert("0.0", self.data)
-            textbox.configure(state="disabled")
+            # --- PREVENÇÃO DE TRAVAMENTO POR ARQUIVO GRANDE ---
+            # Limite de 5MB para preview de texto
+            MAX_PREVIEW_SIZE = 5 * 1024 * 1024 
+            
+            if isinstance(self.data, str) and len(self.data) > MAX_PREVIEW_SIZE:
+                # Cria um frame centralizado para o aviso
+                center_frame = customtkinter.CTkFrame(self)
+                center_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+                center_frame.grid_rowconfigure(0, weight=1)
+                center_frame.grid_columnconfigure(0, weight=1)
+                
+                label = customtkinter.CTkLabel(center_frame, text=f"Arquivo muito grande para visualização ({len(self.data) / (1024*1024):.1f} MB).\n\nUse o botão 'Fazer Download'.", text_color="orange", font=("", 14))
+                label.grid(row=0, column=0, sticky="nsew")
+            else:
+                textbox = customtkinter.CTkTextbox(self)
+                textbox.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+                textbox.insert("0.0", self.data)
+                textbox.configure(state="disabled")
 
         elif self.file_format == 'jpg':
             try:
-                # Se for uma lista de bytes (de PDF para JPG), pega o primeiro
-                image_bytes = self.data[0] if isinstance(self.data, list) else self.data
-                pil_image = Image.open(io.BytesIO(image_bytes))
-                ctk_image = customtkinter.CTkImage(light_image=pil_image, dark_image=pil_image, size=pil_image.size)
-                
-                # Adiciona scrollbars se a imagem for grande
-                canvas = customtkinter.CTkCanvas(self, width=pil_image.width, height=pil_image.height)
+                # --- LÓGICA MELHORADA PARA MÚLTIPLAS PÁGINAS ---
                 scrollable_frame = customtkinter.CTkScrollableFrame(self)
                 scrollable_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
                 
-                image_label = customtkinter.CTkLabel(scrollable_frame, image=ctk_image, text="")
-                image_label.pack(expand=True)
+                # Verifica se 'data' é uma lista (de pdf_to_jpg) ou um único item
+                image_list = self.data if isinstance(self.data, list) else [self.data]
+
+                for image_bytes in image_list:
+                    pil_image = Image.open(io.BytesIO(image_bytes))
+                    ctk_image = customtkinter.CTkImage(light_image=pil_image, dark_image=pil_image, size=pil_image.size)
+                    
+                    image_label = customtkinter.CTkLabel(scrollable_frame, image=ctk_image, text="")
+                    image_label.pack(pady=10, padx=10, expand=True)
 
             except Exception as e:
                 self.parent.log(f"Erro ao exibir imagem: {e}")
 
         elif self.file_format == 'pdf':
-            # Renderiza páginas do PDF como imagens em um frame rolável
             try:
                 pdf_doc = fitz.open(stream=self.data, filetype="pdf")
                 scrollable_frame = customtkinter.CTkScrollableFrame(self)
@@ -102,14 +113,13 @@ class PreviewWindow(customtkinter.CTkToplevel):
 class App(customtkinter.CTk):
     def __init__(self):
         super().__init__()
-        self.title(f"Conversor de Arquivos v{VERSAO_ATUAL}") # <<< MODIFICADO >>>
+        self.title(f"Conversor de Arquivos v{VERSAO_ATUAL}")
         self.geometry("700x550")
         self.converter = Converter()
         self.input_file_path = ""
-        self.converted_data = None # <<< NOVO >>>
-        self.to_format = "" # <<< NOVO >>>
+        self.converted_data = None
+        self.to_format = ""
 
-        # ... (O restante do __init__ até o botão permanece igual)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
 
@@ -138,15 +148,13 @@ class App(customtkinter.CTk):
         self.log_textbox = customtkinter.CTkTextbox(self, state="disabled")
         self.log_textbox.grid(row=2, column=0, padx=20, pady=20, sticky="nsew")
         
-        # <<< MODIFICADO: Texto do botão >>>
         self.convert_button = customtkinter.CTkButton(self, text="Converter e Visualizar", command=self.run_conversion, height=40)
         self.convert_button.grid(row=3, column=0, padx=20, pady=(10, 20), sticky="ew")
 
         self.log("Bem-vindo! Selecione um arquivo para começar.")
-        self.check_for_updates() # <<< NOVO >>> Inicia a verificação de atualização
+        self.check_for_updates()
 
     def select_file(self):
-        # ... (Esta função permanece a mesma)
         from_format = self.from_optionmenu.get().lower()
         filetypes = {'ofx': [("Extrato OFX", "*.ofx")],'csv': [("Arquivo CSV", "*.csv")],'pdf': [("Arquivo PDF", "*.pdf")],'jpg': [("Imagem JPG", "*.jpg;*.jpeg")],'xml': [("Arquivo XML", "*.xml")],}
         current_filetypes = filetypes.get(from_format, [])
@@ -158,7 +166,6 @@ class App(customtkinter.CTk):
         else:
             self.input_file_label.configure(text="Nenhum arquivo selecionado")
 
-    # <<< MODIFICADO: Lógica de conversão agora abre a janela de preview >>>
     def run_conversion(self):
         if not self.input_file_path:
             self.log("Erro: Por favor, selecione um arquivo de origem primeiro.")
@@ -184,7 +191,6 @@ class App(customtkinter.CTk):
         except (Exception, NotImplementedError) as e:
             self.log(f"Erro na conversão: {e}")
 
-    # <<< Esta função agora é chamada pela janela de preview >>>
     def save_converted_file(self, data, to_format):
         output_path = filedialog.asksaveasfilename(defaultextension=f".{to_format}", filetypes=[(f"{to_format.upper()} files", f"*.{to_format}"), ("All files", "*.*")])
         if not output_path:
@@ -193,34 +199,40 @@ class App(customtkinter.CTk):
         try:
             if isinstance(data, list):
                 base_dir, base_name = os.path.dirname(output_path), os.path.splitext(os.path.basename(output_path))[0]
-                # Salva apenas a primeira imagem se o formato de saída for JPG único
                 if to_format == 'jpg':
+                     # Se o formato de saída for JPG, salva apenas a primeira imagem no local exato
                      with open(output_path, 'wb') as f: f.write(data[0])
                      self.log(f"Sucesso! Imagem salva em: {output_path}")
-                else: # Comportamento original para múltiplas páginas
+                     # Se houver mais imagens, avisa o usuário (embora o preview agora mostre todas)
+                     if len(data) > 1:
+                         self.log(f"Aviso: O PDF original tinha {len(data)} páginas. Apenas a primeira foi salva como '{os.path.basename(output_path)}'.")
+                         self.log(f"Para salvar todas, escolha um nome base (ex: 'pagina') e o app salvará 'pagina_1.jpg', 'pagina_2.jpg'...")
+                else:
+                    # Este caso 'else' é improvável para 'list', mas mantido por segurança
                     for i, img_bytes in enumerate(data):
                         page_path = os.path.join(base_dir, f"{base_name}_pagina_{i+1}.jpg")
                         with open(page_path, 'wb') as f: f.write(img_bytes)
                     self.log(f"Sucesso! {len(data)} páginas salvas na pasta: {base_dir}")
+            
             elif isinstance(data, str):
                 with open(output_path, 'w', encoding='utf-8') as f: f.write(data)
                 self.log(f"Sucesso! Arquivo salvo em: {output_path}")
+            
             elif isinstance(data, bytes):
                 with open(output_path, 'wb') as f: f.write(data)
                 self.log(f"Sucesso! Arquivo salvo em: {output_path}")
+        
         except Exception as e:
             self.log(f"Erro ao salvar o arquivo: {e}")
 
     def log(self, message):
-        # ... (Esta função permanece a mesma)
         self.log_textbox.configure(state="normal")
         self.log_textbox.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n\n")
         self.log_textbox.see("end")
         self.log_textbox.configure(state="disabled")
 
-    # --- <<< NOVO: Funções do Sistema de Atualização >>> ---
+    # --- Funções do Sistema de Atualização ---
     def check_for_updates(self):
-        # Executa a verificação em uma thread separada para não congelar a UI
         update_thread = threading.Thread(target=self._update_checker_thread, daemon=True)
         update_thread.start()
 
@@ -232,16 +244,18 @@ class App(customtkinter.CTk):
             latest_version = data.get("version")
             download_url = data.get("url")
 
-            # Compara as versões
             if latest_version and download_url and latest_version > VERSAO_ATUAL:
                 self.log(f"Nova versão encontrada: {latest_version}")
-                # Agenda a exibição do diálogo na thread principal da UI
                 self.after(0, self.show_update_dialog, latest_version, download_url)
 
         except requests.exceptions.RequestException as e:
-            self.log(f"Não foi possível verificar atualizações: {e}")
+            # Erro acontece silenciosamente, sem poluir o log da UI.
+            print(f"Falha ao verificar atualização (silencioso): {e}")
+            pass
         except json.JSONDecodeError:
-            self.log("Erro ao ler o arquivo de versão online.")
+            # Erro acontece silenciosamente, sem poluir o log da UI.
+            print("Falha ao ler JSON da versão (silencioso)")
+            pass
 
     def show_update_dialog(self, new_version, download_url):
         dialog = customtkinter.CTkToplevel(self)
