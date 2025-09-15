@@ -276,7 +276,6 @@ class App(customtkinter.CTk):
         self.log(f"Abrindo link de download: {url}")
         webbrowser.open(url)
 
-
 if __name__ == "__main__":
     app = App()
     app.mainloop()

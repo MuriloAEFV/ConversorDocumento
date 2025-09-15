@@ -12,7 +12,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 
 class Converter:
-
     # --- FUNÇÃO AUXILIAR ROBUSTA PARA LER OFX ---
     def _parse_ofx_robust(self, input_path):
         """
