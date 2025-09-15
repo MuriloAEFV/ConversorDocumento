@@ -1,0 +1,11 @@
+# Arquivos compilados do Python
+__pycache__/
+*.pyc
+
+# Pastas de distribuição e build
+/build/
+/dist/
+*.egg-info/
+
+# Executáveis
+*.exe
